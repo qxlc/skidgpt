@@ -103,38 +103,57 @@ local camera = Workspace.CurrentCamera
 
 --// Settings
 local toggleKey = Enum.KeyCode.V
+local fovToggleKey = Enum.KeyCode.B -- Toggle FOV circle visibility
 local smoothness = 0.185 -- Range: 0 (slow) to 1 (instant snap)
+
+-- FOV Circle Settings
+local fovRadius = 250 -- in pixels
+local fovColor = Color3.fromRGB(255, 255, 255)
+local fovTransparency = 1
+local fovThickness = 2
 
 --// State
 local isLocked = false
 local targetHead = nil
+local fovVisible = true
 
---// Get closest player head you're aiming at
+--// FOV Circle UI (requires Drawing API)
+local fovCircle = Drawing.new("Circle")
+fovCircle.Radius = fovRadius
+fovCircle.Color = fovColor
+fovCircle.Thickness = fovThickness
+fovCircle.Transparency = fovTransparency
+fovCircle.Filled = false
+fovCircle.Visible = fovVisible
+
+--// Get closest player head within FOV circle
 local function getClosestHeadInView()
-	local rayOrigin = camera.CFrame.Position
-	local rayDirection = camera.CFrame.LookVector * 1000
+	local closestHead = nil
+	local closestDistance = math.huge
 
-	local rayParams = RaycastParams.new()
-	rayParams.FilterDescendantsInstances = {localPlayer.Character}
-	rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-
-	local result = Workspace:Raycast(rayOrigin, rayDirection, rayParams)
-	if result and result.Instance then
-		local model = result.Instance:FindFirstAncestorOfClass("Model")
-		if model then
-			local player = Players:GetPlayerFromCharacter(model)
-			if player and player ~= localPlayer then
-				local head = model:FindFirstChild("Head")
-				if head then return head end
+	for _, player in pairs(Players:GetPlayers()) do
+		if player ~= localPlayer and player.Character then
+			local head = player.Character:FindFirstChild("Head")
+			if head then
+				local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+				if onScreen then
+					local distanceFromCenter = (Vector2.new(screenPos.X, screenPos.Y) - camera.ViewportSize / 2).Magnitude
+					if distanceFromCenter <= fovRadius and distanceFromCenter < closestDistance then
+						closestDistance = distanceFromCenter
+						closestHead = head
+					end
+				end
 			end
 		end
 	end
-	return nil
+
+	return closestHead
 end
 
---// Toggle lock-on
+--// Input handling
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
+
 	if input.KeyCode == toggleKey then
 		if isLocked then
 			isLocked = false
@@ -146,23 +165,33 @@ UserInputService.InputBegan:Connect(function(input, processed)
 				isLocked = true
 			end
 		end
+	elseif input.KeyCode == fovToggleKey then
+		fovVisible = not fovVisible
+		fovCircle.Visible = fovVisible
 	end
 end)
 
---// Smoothly rotate camera toward target
+--// Update FOV Circle and Rotate Camera
 RunService.RenderStepped:Connect(function()
+	-- Update FOV circle position to center of screen
+	fovCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+
+	-- Camlock logic
 	if isLocked and targetHead and targetHead:IsDescendantOf(Workspace) then
-		-- Respect current position, only rotate camera to look at target
 		local currentPos = camera.CFrame.Position
 		local targetPos = targetHead.Position
 		local targetLook = CFrame.new(currentPos, targetPos)
 
-		-- Interpolate rotation (not position)
-		local currentRotation = camera.CFrame - camera.CFrame.Position
+		local currentRotation = camera.CFrame - currentPos
 		local targetRotation = targetLook - targetLook.Position
 		local newRotation = currentRotation:Lerp(targetRotation, smoothness)
 
 		camera.CFrame = CFrame.new(currentPos) * newRotation
+	else
+		if not targetHead or not targetHead:IsDescendantOf(Workspace) then
+			isLocked = false
+			targetHead = nil
+		end
 	end
 end)
 
