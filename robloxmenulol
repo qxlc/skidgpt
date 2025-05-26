@@ -220,43 +220,80 @@ end)
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local localPlayer = Players.LocalPlayer
-local desiredSpeed = 200 -- Speed when toggled ON
-local normalSpeed = 16  -- Default WalkSpeed
+local desiredSpeed = 180 -- Studs per second
+local isSpeedOn = false
 
-local isSpeedOn = false -- Tracks toggle state
+local keysPressed = {}
 
--- Function to apply the correct speed
-local function updateWalkSpeed()
-	local character = localPlayer.Character
-	if not character then return end
-
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
-
-	humanoid.WalkSpeed = isSpeedOn and desiredSpeed or normalSpeed
-end
-
--- Apply on character spawn
-localPlayer.CharacterAdded:Connect(function()
-	task.wait(0.1)
-	updateWalkSpeed()
-end)
-
--- Key press handler
+-- Toggle speed mode with E
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
+
 	if input.KeyCode == Enum.KeyCode.E then
 		isSpeedOn = not isSpeedOn
-		updateWalkSpeed()
+	end
+
+	-- Track movement keys
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		if input.KeyCode == Enum.KeyCode.W or
+		   input.KeyCode == Enum.KeyCode.A or
+		   input.KeyCode == Enum.KeyCode.S or
+		   input.KeyCode == Enum.KeyCode.D then
+			keysPressed[input.KeyCode] = true
+		end
 	end
 end)
 
--- Initial apply
-if localPlayer.Character then
-	updateWalkSpeed()
-end
+UserInputService.InputEnded:Connect(function(input)
+	-- Untrack released movement keys
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		if input.KeyCode == Enum.KeyCode.W or
+		   input.KeyCode == Enum.KeyCode.A or
+		   input.KeyCode == Enum.KeyCode.S or
+		   input.KeyCode == Enum.KeyCode.D then
+			keysPressed[input.KeyCode] = false
+		end
+	end
+end)
+
+-- Movement loop
+RunService.RenderStepped:Connect(function(dt)
+	if not isSpeedOn then return end
+
+	local character = localPlayer.Character
+	if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+
+	local rootPart = character.HumanoidRootPart
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+
+	local moveDirection = Vector3.zero
+
+	-- Build direction vector based on keys
+	if keysPressed[Enum.KeyCode.W] then
+		moveDirection += camera.CFrame.LookVector
+	end
+	if keysPressed[Enum.KeyCode.S] then
+		moveDirection -= camera.CFrame.LookVector
+	end
+	if keysPressed[Enum.KeyCode.D] then
+		moveDirection += camera.CFrame.RightVector
+	end
+	if keysPressed[Enum.KeyCode.A] then
+		moveDirection -= camera.CFrame.RightVector
+	end
+
+	-- Normalize and apply movement (ignore Y axis)
+	if moveDirection.Magnitude > 0 then
+		moveDirection = Vector3.new(moveDirection.X, 0, moveDirection.Z).Unit
+		local moveDelta = moveDirection * desiredSpeed * dt
+		rootPart.CFrame = rootPart.CFrame + moveDelta
+	end
+end)
+
 
 
 
