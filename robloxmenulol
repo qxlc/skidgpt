@@ -104,11 +104,11 @@ local camera = Workspace.CurrentCamera
 --// Settings
 local toggleKey = Enum.KeyCode.V
 local fovToggleKey = Enum.KeyCode.B
-local smoothness = 0.185 -- Range: 0 (slow) to 1 (instant snap)
+local smoothness = 1 -- Range: 0 (slow) to 1 (instant snap)
 
 -- FOV Circle Settings
 local fovRadius = 100 -- in pixels
-local fovColor = Color3.fromRGB(255, 0, 0)
+local fovColor = Color3.fromRGB(255, 255, 255)
 local fovTransparency = 0.5
 local fovThickness = 2
 
