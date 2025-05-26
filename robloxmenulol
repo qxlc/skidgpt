@@ -103,14 +103,20 @@ local camera = Workspace.CurrentCamera
 
 --// Settings
 local toggleKey = Enum.KeyCode.V
-local fovToggleKey = Enum.KeyCode.B -- Toggle FOV circle visibility
+local fovToggleKey = Enum.KeyCode.B
 local smoothness = 0.185 -- Range: 0 (slow) to 1 (instant snap)
 
 -- FOV Circle Settings
-local fovRadius = 250 -- in pixels
-local fovColor = Color3.fromRGB(255, 255, 255)
-local fovTransparency = 1
+local fovRadius = 100 -- in pixels
+local fovColor = Color3.fromRGB(255, 0, 0)
+local fovTransparency = 0.5
 local fovThickness = 2
+
+-- Prediction Settings
+local predictionEnabled = true
+local predictionX = 0.1237
+local predictionY = 0.1237
+local predictionZ = 0.1237
 
 --// State
 local isLocked = false
@@ -180,6 +186,20 @@ RunService.RenderStepped:Connect(function()
 	if isLocked and targetHead and targetHead:IsDescendantOf(Workspace) then
 		local currentPos = camera.CFrame.Position
 		local targetPos = targetHead.Position
+
+		-- Axis-specific prediction
+		if predictionEnabled then
+			local character = targetHead.Parent
+			if character and character:FindFirstChild("HumanoidRootPart") then
+				local velocity = character.HumanoidRootPart.Velocity
+				targetPos = targetPos + Vector3.new(
+					velocity.X * predictionX,
+					velocity.Y * predictionY,
+					velocity.Z * predictionZ
+				)
+			end
+		end
+
 		local targetLook = CFrame.new(currentPos, targetPos)
 
 		local currentRotation = camera.CFrame - currentPos
@@ -194,7 +214,6 @@ RunService.RenderStepped:Connect(function()
 		end
 	end
 end)
-
 
 
 
@@ -242,3 +261,143 @@ end
 
 
 
+-- LocalScript (for exploit environments with Drawing API)
+
+local players = game:GetService("Players")
+local uis = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local camera = workspace.CurrentCamera
+local localPlayer = players.LocalPlayer
+
+local snaplines = {}
+local snaplinesEnabled = false -- toggle state
+
+-- Create a line
+local function createLine()
+    local line = Drawing.new("Line")
+    line.Visible = true
+    line.Thickness = 1
+    line.Color = Color3.fromRGB(255, 255, 255)
+    return line
+end
+
+-- Clear all snaplines
+local function clearLines()
+    for _, line in ipairs(snaplines) do
+        line:Remove()
+    end
+    snaplines = {}
+end
+
+-- Toggle snaplines with "P" key
+uis.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.P then
+        snaplinesEnabled = not snaplinesEnabled
+        if not snaplinesEnabled then
+            clearLines()
+        end
+    end
+end)
+
+-- Render loop
+runService.RenderStepped:Connect(function()
+    if not snaplinesEnabled then return end
+
+    clearLines()
+
+    for _, player in pairs(players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = player.Character.HumanoidRootPart
+            local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+
+            if onScreen then
+                local line = createLine()
+                line.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y) -- bottom center
+                line.To = Vector2.new(screenPos.X, screenPos.Y)
+                table.insert(snaplines, line)
+            end
+        end
+    end
+end)
+
+
+
+
+
+-- LocalScript (StarterPlayerScripts)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- Settings
+local ClickCooldown = 0.2 -- seconds between clicks
+local AutoClickEnabled = false
+local ToggleKey = Enum.KeyCode.Q
+
+-- List of tool names to exclude from auto-clicking
+local ExcludedToolNames = {
+    "Knife",
+}
+
+local lastClickTime = 0
+
+-- Check if tool name is in exclusion list
+local function isExcludedTool(tool)
+    if not tool then return false end
+    for _, name in ipairs(ExcludedToolNames) do
+        if tool.Name == name then
+            return true
+        end
+    end
+    return false
+end
+
+-- Function to check if cursor is on another player
+local function isCursorOnPlayer()
+    local target = Mouse.Target
+    if not target then return false end
+
+    local character = target:FindFirstAncestorOfClass("Model")
+    local player = Players:GetPlayerFromCharacter(character)
+
+    return player and player ~= LocalPlayer
+end
+
+-- Function to simulate a click
+local function simulateClick()
+    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+    if isExcludedTool(tool) then return end
+
+    if tool and tool:FindFirstChild("Activate") then
+        tool:Activate()
+    elseif tool then
+        tool:Activate()
+    else
+        print("Click!")
+    end
+end
+
+-- Toggle auto-clicking on/off with key
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == ToggleKey then
+        AutoClickEnabled = not AutoClickEnabled
+        print("Auto Click: " .. (AutoClickEnabled and "Enabled" or "Disabled"))
+    end
+end)
+
+-- Main loop: auto-click when cursor is on player and tool is allowed
+RunService.RenderStepped:Connect(function()
+    if AutoClickEnabled and isCursorOnPlayer() then
+        local now = tick()
+        if now - lastClickTime >= ClickCooldown then
+            simulateClick()
+            lastClickTime = now
+        end
+    end
+end)
